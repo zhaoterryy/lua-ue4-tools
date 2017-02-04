@@ -51,8 +51,19 @@ local function main()
 --        print (line)
 --    end
 
+    local foundClassLine = false
     for line in inFile:lines() do
-        print(line)
+        if foundClassLine then
+            print(line)
+            local foundClassWord = false
+
+            print(string.match(line:match("%w+%s:"), "%w+"))
+
+            foundClassLine = false
+        end
+        if line:find("UCLASS") ~= nil then
+            foundClassLine = true
+        end
     end
 
 end
