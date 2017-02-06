@@ -1,11 +1,19 @@
 require "lfs"
 
-local cppFile, hFile
+local cppFile
+local hFile
 
 -- function declarations
-local dirItr, insertSnippets, mainLoop, parseFiles, entry, insertConstructor, loadFile
+local dirItr, insertSnippets, mainLoop, parseFiles, entry, insertConstructor, loadFile, insertBeginPlay
 
-local cl = {}
+local cl = {
+    name,
+    parent,
+    bConstructor = false,
+    bBeginPlay = false,
+    bTick = false,
+    bPublic = false,
+}
 
 loadFile = function (str, path)
     if string.find(str, ".h") then
@@ -42,14 +50,21 @@ dirItr = function (path, targetFileString)
 end
 
 insertConstructor = function ()
+    local tempStr, tempPos
     hFile:seek("set")
     for line in hFile:lines() do
         print(line)
         if line:find("public:", 1, true) ~= nil then
-            print(line:find("public:", 1, true))
-            hFile:write("hello")
+            tempPos = hFile:seek()
+            break
         end
     end
+    hFile:seek("set", tempPos)
+    tempStr = hFile:read("*a")
+    hFile:seek("set", tempPos)
+    tempStr = "\n\t"..cl.name.."();\n"..tempStr
+    hFile:write(tempStr)
+    hFile:flush()
 end
 insertSnippets = function ()
     mainLoop()
@@ -86,45 +101,47 @@ insertSnippets = function ()
     end
 end
 
+insertBeginPlay = function ()
+    print("inserting beginplay")
+    local temp, tempPos
+    hFile:seek("set")
+    for line in hFile:lines() do
+        if line:find("public:", 1, true) then
+            tempPos = hFile:seek()
+--            temp = hFile:read("*a")
+--            print(temp)
+            break
+        end
+    end
+    hFile:seek("set", tempPos)
+    temp = hFile:read("*a")
+    hFile:seek("set", tempPos)
+    temp = "\n\tthis is the beginplay function\n"..temp
+--    print(temp)
+    hFile:write(temp)
+    hFile:close()
+
+end
 mainLoop = function ()
     local input
     repeat
         io.write("UE4 Tools > "); io.flush()
         input = io.read()
-        if string.find(input:lower(), "^ins%s%w+") ~= nil then
---            local insertString = string.lower(input:sub((select(2, input:find("^ins%s%w"))), (select(2, input:find("^ins%s.*")))))
-            local inStr; _,_,inStr = input:find("^ins%s(.*)"); inStr:lower()
-            print (inStr)
-        end
 
---        if string.find(input:lower(), "fin%s%w+") ~= nil then
---            local funcToInsert = string.lower(input:sub((select(2,input:find("^fin%s%w"))), (select(2,input:find("^fin%s%w+")))))
---            print (funcToInsert)
---            print ("inserting beginplay")
---            if funcToInsert:find("begin") ~= nil then
---                print("inserting beginplay");
---            end
---            if funcToInsert:find("tick") ~= nil then
---                print("inserting tick")
---            end
---            if funcToInsert:find("cons") ~= nil then
---                print("inserting constructor")
---                insertConstructor()
---            end
---        end
+        if input:find("^fin%s%w+") ~= nil then
+            local arg = input:match("^fin%s(%w+)")
+            print(arg)
+            if arg == "beginplay" or arg == "bp" then
+                insertBeginPlay()
+            elseif arg == "constructor" then
+                insertConstructor()
+            end
+        end
 
     until input == "." or input == "exit"
 end
 
 parseFiles = function ()
-    cl = {
-        name,
-        parent,
-        bConstructor = false,
-        bBeginPlay = false,
-        bTick = false,
-        bPublic = false,
-    }
 
 
 -- iterate through header file
@@ -173,7 +190,9 @@ parseFiles = function ()
     io.write ("\"public:\"\t")
     print (cl.bPublic)
     print (" ------------------------------------------------")
-    insertSnippets()
+--    insertSnippets()
+    mainLoop()
+
 end
 
 entry = function ()
