@@ -1,10 +1,13 @@
 require "lfs"
 
-local cppFile
-local hFile
+local cppFilePath
+local hFilePath
 
 -- function declarations
-local dirItr, insertSnippets, mainLoop, parseFiles, entry, insertConstructor, loadFile, insertBeginPlay
+local dirItr, insertSnippets, mainLoop, parseFiles, entry, loadFile
+
+-- insert functions
+local insertConstructor, insertBeginPlay, insertTick
 
 local cl = {
     name,
@@ -16,11 +19,7 @@ local cl = {
 }
 
 function entry()
-    local inFileString = arg[1]
-    local targetFileString, targetExt
-
     lfs.chdir(lfs.currentdir().."/Source")
-
 
     print("Input file is "..arg[1])
     if arg[2] then
@@ -33,12 +32,12 @@ function entry()
 end
 
 function loadFile (str, path)
-    if string.find(str, ".h") then
-        hFile = io.open(path, "r+")
-        cppFile = dirItr(".",string.sub(str, 1, string.find(str, ".", 1, true) - 1) .. ".cpp")
-    elseif string.find(str, ".cpp") then
-        cppFile = io.open(path, "r+")
-        hFile = dirItr(".",string.sub(str, 1, string.find(str, ".", 1, true) - 1) .. ".h")
+    if str:find(".h") then
+        hFilePath = path
+        cppFilePath = dirItr(".", str:match("^(%w+)") .. ".cpp")
+    elseif str:find(".cpp") then
+        cppFilePath = path
+        hFilePath = dirItr(".", str:match("^(%w+)") .. ".h")
     else
         print "No header or cpp file found"
         os.exit(1)
@@ -53,7 +52,8 @@ function dirItr (path, targetFileString)
             print ("\t "..f)
             if file == targetFileString then
                 print ("\t "..targetFileString.." found\t-------------------------\n")
-                return io.open(path.."/"..targetFileString, "r+")
+--                return io.open(path.."/"..targetFileString, "r+")
+                return path.."/"..targetFileString
             end
 
             local attr = lfs.attributes(f)
@@ -65,81 +65,60 @@ function dirItr (path, targetFileString)
     end
 end
 
-function insertConstructor ()
+function insertBeginPlay()
+    print("inserting beginplay")
+    local tempPos
+    local hFile = io.open(hFilePath, "r+")
 
-    -- if constructor already exists then return
-    local tempStr, tempPos
-    hFile:seek("set")
     for line in hFile:lines() do
-        print(line)
+        -- @todo : insert after constructor instead of after public
+        if line:find("public:", 1, true) then
+            tempPos = hFile:seek()
+            break
+        end
+    end
+    hFile:seek("set", tempPos)
+    local tempStr = hFile:read("*a")
+    hFile:seek("set", tempPos)
+    tempStr = "\n\tvirtual void BeginPlay() override;\n"..tempStr
+    hFile:write(tempStr); hFile:close()
+end
+
+function insertConstructor ()
+    print("inserting constructor")
+    local tempPos
+    local hFile = io.open(hFilePath, "r+")
+
+    for line in hFile:lines() do
         if line:find("public:", 1, true) ~= nil then
             tempPos = hFile:seek()
             break
         end
     end
     hFile:seek("set", tempPos)
-    tempStr = hFile:read("*a")
+    local tempStr = hFile:read("*a")
     hFile:seek("set", tempPos)
     tempStr = "\n\t"..cl.name.."();\n"..tempStr
-    hFile:write(tempStr)
-    hFile:close()
+    hFile:write(tempStr); hFile:close()
 end
 
-function insertSnippets ()
-    mainLoop()
-    if cl.bPublic == false then
-        io.write ("Insert 'public:'?")
-        io.flush()
-        if io.read() ~= "n" or io.read() == "." then
+function insertTick()
+    print("inserting tick")
+    local tempPos
+    local hFile = io.open(hFilePath, "r+")
 
-        end
-    end
-
-    if cl.bConstructor == false then
-        io.write ("Insert Constructor?\t")
-        io.flush()
-        if io.read() ~= "n" or io.read() == "." then
-
-        end
-    end
-
-    if cl.bBeginPlay == false then
-        io.write ("Insert BeginPlay()?\t")
-        io.flush()
-        if io.read() ~= "n" or io.read() == "." then
-
-        end
-    end
-
-    if cl.bTick == false then
-        io.write ("Insert Tick()?\t")
-        io.flush()
-        if io.read() ~= "n" or io.read() == "." then
-
-        end
-    end
-end
-
-function insertBeginPlay()
-    print("inserting beginplay")
-    local temp, tempPos
-    hFile:seek("set")
     for line in hFile:lines() do
-        if line:find("public:", 1, true) then
+        -- @todo : insert after beginplay instead of after public
+        if line:find("public:", 1, true) ~= nil then
             tempPos = hFile:seek()
---            temp = hFile:read("*a")
---            print(temp)
             break
         end
     end
     hFile:seek("set", tempPos)
-    temp = hFile:read("*a")
+    local tempStr = hFile:read("*a")
     hFile:seek("set", tempPos)
-    temp = "\n\tthis is the beginplay function\n"..temp
---    print(temp)
-    hFile:write(temp)
-    hFile:close()
-
+    tempStr = "\n\tvirtual void Tick(float DeltaSeconds) override;\n"..tempStr
+    hFile:write(tempStr); hFile:close()
 end
 
 function mainLoop()
@@ -149,50 +128,48 @@ function mainLoop()
         input = io.read()
 
         if input:find("^fin%s%w+") ~= nil then
-            local arg = input:match("^fin%s(%w+)")
-            print(arg)
-            if arg == "beginplay" or arg == "bp" then
+            local arg = string.lower(input:match("^fin%s(%w+)"))
+--            print(arg)
+            if arg == "beginplay" or arg == "bp" and not cl.bBeginPlay then
                 insertBeginPlay()
-            elseif arg == "constructor" then
+            elseif arg == "constructor" and not cl.bConstructor then
                 insertConstructor()
+            elseif arg == "tick" and not cl.bTick then
+                insertTick()
             end
         end
-
     until input == "." or input == "exit"
 end
 
 function parseFiles()
-
-
 -- iterate through header file
     local foundClassLine = false
+    local hFile = io.open(hFilePath)
+
     for line in hFile:lines() do
         if foundClassLine then
             cl.name = string.match(line:match("%w+%s:"), "%w+")
             cl.parent = string.match(line:match(":%s.*"), "[^: a-z].*")
             foundClassLine = false
         end
-
-        if line:find("public:", 1, true) ~= nil then
+        if line:find("public:", 1, true) then
             cl.bPublic = true
         end
-
-        if cl.name ~= nil and line:find(cl.name.."();", 1, true) ~= nil then
+        if cl.name ~= nil and line:find(cl.name.."();", 1, true) then
             cl.bConstructor = true
         end
-
-        if line:find("virtual void BeginPlay()", 1, true) ~= nil then
+        if line:find("virtual void BeginPlay()", 1, true) then
             cl.bBeginPlay = true
         end
-
-        if line:find("virtual void Tick(", 1, true) ~= nil then
+        if line:find("virtual void Tick(", 1, true) then
             cl.bTick = true
         end
-
-        if line:find("UCLASS", 1, true) ~= nil then
+        if line:find("UCLASS", 1, true) then
             foundClassLine = true
         end
     end
+
+    hFile:close()
 
     if cl.name == nil then
         print("UCLASS not found!")
@@ -210,9 +187,43 @@ function parseFiles()
     io.write ("\"public:\"\t")
     print (cl.bPublic)
     print (" ------------------------------------------------")
---    insertSnippets()
     mainLoop()
-
 end
 
 entry()
+
+-- saving function for interactive mode
+--function insertSnippets ()
+--    mainLoop()
+--    if cl.bPublic == false then
+--        io.write ("Insert 'public:'?")
+--        io.flush()
+--        if io.read() ~= "n" or io.read() == "." then
+--
+--        end
+--    end
+--
+--    if cl.bConstructor == false then
+--        io.write ("Insert Constructor?\t")
+--        io.flush()
+--        if io.read() ~= "n" or io.read() == "." then
+--
+--        end
+--    end
+--
+--    if cl.bBeginPlay == false then
+--        io.write ("Insert BeginPlay()?\t")
+--        io.flush()
+--        if io.read() ~= "n" or io.read() == "." then
+--
+--        end
+--    end
+--
+--    if cl.bTick == false then
+--        io.write ("Insert Tick()?\t")
+--        io.flush()
+--        if io.read() ~= "n" or io.read() == "." then
+--
+--        end
+--    end
+--end
