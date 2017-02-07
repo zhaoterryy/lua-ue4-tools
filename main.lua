@@ -8,6 +8,8 @@ local dirItr, insertSnippets, mainLoop, parseFiles, entry, loadFile
 -- insert functions
 local insertConstructor, insertBeginPlay, insertTick
 
+local function errorHandler(err) print ("Error: "..err) end
+
 local cl = {
     name,
     parent,
@@ -37,8 +39,15 @@ function loadFile (str, path)
     elseif str:find(".cpp") then
         cppFilePath = path
         hFilePath = dirItr(".", str:match("^(.*).%w") .. ".h")
-    else
-        print "No header or cpp file found"
+    end
+    if hFilePath == nil or cppFilePath == nil then
+        errorHandler("No header or cpp file found")
+        os.exit(1)
+    end
+    if io.open(hFilePath) == nil or io.open(cppFilePath) == nil then
+        errorHandler("Unable to open header or cpp file. They may be corrupt.")
+        print('header:', select(2,io.open(hFilePath)))
+        print('cpp:', select(2, io.open(cppFilePath)))
         os.exit(1)
     end
 end
@@ -62,12 +71,17 @@ function dirItr (path, targetFileString)
             end
         end
     end
+    return nil
 end
 
 function insertBeginPlay()
     print("inserting beginplay")
     local hTempPos
     local hFile = io.open(hFilePath, "r+")
+    if hSuccess ~= true then
+        errorHandler("Header file failed to load.")
+        return
+    end
 
     for line in hFile:lines() do
         if cl.bPublic and cl.bConstructor then
