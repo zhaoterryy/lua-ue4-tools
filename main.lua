@@ -34,10 +34,10 @@ end
 function loadFile (str, path)
     if str:find(".h") then
         hFilePath = path
-        cppFilePath = dirItr(".", str:match("^(%w+)") .. ".cpp")
+        cppFilePath = dirItr(".", str:match("^(.*).%w") .. ".cpp")
     elseif str:find(".cpp") then
         cppFilePath = path
-        hFilePath = dirItr(".", str:match("^(%w+)") .. ".h")
+        hFilePath = dirItr(".", str:match("^(.*).%w") .. ".h")
     else
         print "No header or cpp file found"
         os.exit(1)
@@ -67,58 +67,144 @@ end
 
 function insertBeginPlay()
     print("inserting beginplay")
-    local tempPos
+    local hTempPos, cTempPos
     local hFile = io.open(hFilePath, "r+")
 
     for line in hFile:lines() do
         -- @todo : insert after constructor instead of after public
         if line:find("public:", 1, true) then
-            tempPos = hFile:seek()
+            hTempPos = hFile:seek()
             break
         end
     end
-    hFile:seek("set", tempPos)
-    local tempStr = hFile:read("*a")
-    hFile:seek("set", tempPos)
-    tempStr = "\n\tvirtual void BeginPlay() override;\n"..tempStr
-    hFile:write(tempStr); hFile:close()
+
+    hFile:seek("set", hTempPos)
+    local hTempStr = hFile:read("*a")
+    hFile:seek("set", hTempPos)
+    hTempStr = "\n\tvirtual void BeginPlay() override;\n"..hTempStr
+    hFile:write(hTempStr); hFile:close()
+
+    -- .cpp
+--    local bIncludeFound, bConstructorFound, cTempPos, cInclPos
+    local cppFile = io.open(cppFilePath, "a")
+--    local cppFileStr = io.read("*a")
+--    for line in cppFile:lines() do
+--        if line:find("^#include%s\".-\"$") then
+--            cInclPos = cppFile:seek()
+--        end
+--    end
+
+--    local findConstrPos = cppFileStr:find(cl.name.."::"..cl.name.."()\n{.*}")
+--    if findConstrPos then
+--        cTempPos = findConstrPos
+--        bConstructorFound = true
+--    end
+-- @todo : insert in proper position
+
+--    if bConstructorFound ~= true then
+        -- should we be handling it this way??
+--        cppFile:seek("set", cInclPos)
+--        local cTempStr = cppFile:read("*a")
+--        cTempStr = "\nvoid "..cl.Name.."::".." BeginPlay()\n{\nSuper::BeginPlay();\n}\n"..cTempStr
+--        cppFile:seek("set", cInclPos)
+--        cppFile:write(cTempStr); cppFile:close()
+--    else
+--        cppFile:seek("set", cTempPos)
+--        local cTempStr = cppFile:read("*a")
+--        cTempStr = "\nvoid "..cl.Name.."::".." BeginPlay()\n{\nSuper::BeginPlay();\n}\n"..cTempStr
+--        cppFile:seek("set", cTempPos)
+--        cppFile:write(cTempStr); cppFile:close()
+--    end
+
+    cppFile:write("\nvoid "..cl.name.."::".."BeginPlay()\n{\n\tSuper::BeginPlay();\n}\n")
+    cppFile:close()
 end
 
-function insertConstructor ()
+function insertConstructor()
     print("inserting constructor")
-    local tempPos
-    local hFile = io.open(hFilePath, "r+")
+    local hTempPos
 
+    local hFile = io.open(hFilePath, "r+")
+    -- header
     for line in hFile:lines() do
-        if line:find("public:", 1, true) ~= nil then
-            tempPos = hFile:seek()
+        if line:find("public:", 1, true) then
+            hTempPos = hFile:seek()
             break
         end
     end
-    hFile:seek("set", tempPos)
-    local tempStr = hFile:read("*a")
-    hFile:seek("set", tempPos)
-    tempStr = "\n\t"..cl.name.."();\n"..tempStr
-    hFile:write(tempStr); hFile:close()
+
+    hFile:seek("set", hTempPos)
+    local hTempStr = hFile:read("*a")
+    hTempStr = "\n\t"..cl.name.."();\n"..hTempStr
+    hFile:seek("set", hTempPos)
+    hFile:write(hTempStr); hFile:close()
+
+    local bIncludeFound, cTempPos
+    local cppFile = io.open(cppFilePath, "r+")
+    -- .cpp
+    for line in cppFile:lines() do
+        if line:find("^#include%s\".-\"$") then
+            cTempPos = cppFile:seek()
+            bIncludeFound = true
+        end
+    end
+
+    if bIncludeFound ~= true then
+        -- should we be handling it this way??
+        local tempIncl = hFilePath:match("([^\\]-[^%.]+)$")
+        print("error: no includes found.. inserting\n#include \""..tempIncl.."\"")
+        cppFile:seek("set")
+        local cTempStr = cppFile:read("*a")
+        cTempStr = "// auto generated stub from lua-ue4-tools\n#include \""..tempIncl.."\""
+        cppFile:seek("set")
+        cppFile:write(cTempStr); cppFile:close()
+    else
+        cppFile:seek("set", cTempPos)
+        local cTempStr = cppFile:read("*a")
+        cTempStr = "\n"..cl.name.."::"..cl.name.."()\n{\n\n}\n"..cTempStr
+        cppFile:seek("set", cTempPos)
+        cppFile:write(cTempStr); cppFile:close()
+    end
 end
 
 function insertTick()
     print("inserting tick")
-    local tempPos
+    local hTempPos
     local hFile = io.open(hFilePath, "r+")
 
     for line in hFile:lines() do
         -- @todo : insert after beginplay instead of after public
         if line:find("public:", 1, true) ~= nil then
-            tempPos = hFile:seek()
+            hTempPos = hFile:seek()
             break
         end
     end
-    hFile:seek("set", tempPos)
-    local tempStr = hFile:read("*a")
-    hFile:seek("set", tempPos)
-    tempStr = "\n\tvirtual void Tick(float DeltaSeconds) override;\n"..tempStr
-    hFile:write(tempStr); hFile:close()
+
+    hFile:seek("set", hTempPos)
+    local hTempStr = hFile:read("*a")
+    hFile:seek("set", hTempPos)
+    hTempStr = "\n\tvirtual void Tick(float DeltaSeconds) override;\n"..hTempStr
+    hFile:write(hTempStr); hFile:close()
+
+    -- .cpp
+    local cppFile = io.open(cppFilePath, "a")
+-- @todo : insert in proper position
+--    local bIncludeFound, bConstructorFound, bBPFound, cInclPos, cConstrPos, cBPPos
+--    local cppFile = io.open(cppFilePath, "r+")
+--    for line in cppFile:lines() do
+--        if line:find("^#include%s\".-\"$") then
+--            cInclPos = cppFile:seek()
+--            bIncludeFound = true
+--        end
+--        if line:find(cl.name.."::"..cl.name.."()\n{.*}") then
+--            cConstrPos = cppFile:seek()
+--            bConstructorFound = true
+--        end
+--        if line:find("void%s"..cl.name.."::".."BeginPlay()")
+--    end
+
+    cppFile:write("\nvoid "..cl.name.."::".."Tick(float DeltaSeconds)\n{\n\tSuper::Tick(DeltaSeconds);\n}")
+    cppFile:close()
 end
 
 function mainLoop()
