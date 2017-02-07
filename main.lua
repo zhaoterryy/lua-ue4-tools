@@ -1,7 +1,6 @@
 require "lfs"
 
-local cppFilePath
-local hFilePath
+local cppFilePath, hFilePath
 
 -- function declarations
 local dirItr, insertSnippets, mainLoop, parseFiles, entry, loadFile
@@ -34,10 +33,10 @@ end
 function loadFile (str, path)
     if str:find(".h") then
         hFilePath = path
-        cppFilePath = dirItr(".", str:match("^(%w+)") .. ".cpp")
+        cppFilePath = dirItr(".", str:match("^(.*).%w") .. ".cpp")
     elseif str:find(".cpp") then
         cppFilePath = path
-        hFilePath = dirItr(".", str:match("^(%w+)") .. ".h")
+        hFilePath = dirItr(".", str:match("^(.*).%w") .. ".h")
     else
         print "No header or cpp file found"
         os.exit(1)
@@ -71,17 +70,30 @@ function insertBeginPlay()
     local hFile = io.open(hFilePath, "r+")
 
     for line in hFile:lines() do
-        -- @todo : insert after constructor instead of after public
-        if line:find("public:", 1, true) then
-            tempPos = hFile:seek()
-            break
+        if cl.bPublic and cl.bConstructor then
+            if line:find(cl.name.."%s*%(%);") then
+              tempPos = hFile:seek()
+              break
+            end
+        elseif cl.bPublic and not cl.bConstructor then
+            if line:find("public:", 1, true) then
+  --          should we be handling it this way??
+              print("CAUTION: Constructor missing, inserting below 'public:'")
+              tempPos = hFile:seek()
+              break
+            end
+        else
+          print ("ERROR : No public area... What are you doing????")
+          return
         end
     end
     hFile:seek("set", tempPos)
     local tempStr = hFile:read("*a")
-    hFile:seek("set", tempPos)
     tempStr = "\n\tvirtual void BeginPlay() override;\n"..tempStr
+    hFile:seek("set", tempPos)
     hFile:write(tempStr); hFile:close()
+    -- @todo : confirm write
+    cl.bBeginPlay = true
 end
 
 function insertConstructor ()
@@ -90,44 +102,71 @@ function insertConstructor ()
     local hFile = io.open(hFilePath, "r+")
 
     for line in hFile:lines() do
-        if line:find("public:", 1, true) ~= nil then
-            tempPos = hFile:seek()
-            break
+        if cl.bPublic then
+          if line:find("public:", 1, true) then
+              tempPos = hFile:seek()
+              break
+          end
+        else
+          print ("ERROR : No public area... What are you doing????")
+          return
         end
     end
     hFile:seek("set", tempPos)
     local tempStr = hFile:read("*a")
-    hFile:seek("set", tempPos)
     tempStr = "\n\t"..cl.name.."();\n"..tempStr
+    hFile:seek("set", tempPos)
     hFile:write(tempStr); hFile:close()
+    -- @todo : confirm write
+    cl.bConstructor = true
 end
 
 function insertTick()
     print("inserting tick")
     local tempPos
     local hFile = io.open(hFilePath, "r+")
-
+-- @todo : insert after beginplay instead of after public
     for line in hFile:lines() do
-        -- @todo : insert after beginplay instead of after public
-        if line:find("public:", 1, true) ~= nil then
-            tempPos = hFile:seek()
-            break
+        if cl.bPublic and cl.bBeginPlay then
+            if line:find("virtual void BeginPlay() override;", 1, true) then
+              tempPos = hFile:seek()
+              break
+            end
+        elseif cl.bPublic and cl.bConstructor and not cl.BeginPlay then
+            if line:find(cl.name.."%s*%(%);") then
+  --          should we be handling it this way??
+              print("CAUTION: BeginPlay missing, inserting below the constructor")
+              tempPos = hFile:seek()
+              break
+            end
+        elseif cl.bPublic and not cl.bConstructor and not cl.BeginPlay then
+          if line:find("public:", 1, true) then
+              print("CAUTION: BeginPlay and Constructor missing, inserting below 'public:'")
+              tempPos = hFile:seek()
+              break
+          end
+        elseif not cl.bPublic then
+          print ("ERROR : No public area... What are you doing????")
+          return
         end
     end
     hFile:seek("set", tempPos)
     local tempStr = hFile:read("*a")
-    hFile:seek("set", tempPos)
     tempStr = "\n\tvirtual void Tick(float DeltaSeconds) override;\n"..tempStr
+    hFile:seek("set", tempPos)
     hFile:write(tempStr); hFile:close()
+    -- @todo : confirm write
+    cl.bTick = true
 end
 
 function mainLoop()
+  -- @todo : handle cases where file conatains comments that may affect pattern searching
     local input
     repeat
         io.write("UE4 Tools > "); io.flush()
         input = io.read()
 
-        if input:find("^fin%s%w+") ~= nil then
+        if input:find("^fin%s%w+") then
             local arg = string.lower(input:match("^fin%s(%w+)"))
 --            print(arg)
             if arg == "beginplay" or arg == "bp" and not cl.bBeginPlay then
@@ -155,7 +194,7 @@ function parseFiles()
         if line:find("public:", 1, true) then
             cl.bPublic = true
         end
-        if cl.name ~= nil and line:find(cl.name.."();", 1, true) then
+        if cl.name ~= nil and line:find(cl.name.."%s*%(%);") then
             cl.bConstructor = true
         end
         if line:find("virtual void BeginPlay()", 1, true) then
