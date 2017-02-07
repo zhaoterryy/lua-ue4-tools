@@ -1,1 +1,12 @@
 .xml,.iml
+.idea/misc.xml
+.idea/modules.xml
+.idea/vcs.xml
+.idea/workspace.xml
+UE4 Tools.iml
+out/production/UE4 Tools/.idea/misc.xml
+out/production/UE4 Tools/.idea/modules.xml
+out/production/UE4 Tools/.idea/workspace.xml
+out/production/UE4 Tools/UE4 Tools.iml
+out/production/UE4 Tools/main.lua
+patch.diff
