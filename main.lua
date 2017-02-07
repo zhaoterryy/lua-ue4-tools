@@ -15,7 +15,24 @@ local cl = {
     bPublic = false,
 }
 
-loadFile = function (str, path)
+function entry()
+    local inFileString = arg[1]
+    local targetFileString, targetExt
+
+    lfs.chdir(lfs.currentdir().."/Source")
+
+
+    print("Input file is "..arg[1])
+    if arg[2] then
+        loadFile(arg[1], arg[2])
+    else
+        loadFile(arg[1], arg[1])
+    end
+
+    parseFiles()
+end
+
+function loadFile (str, path)
     if string.find(str, ".h") then
         hFile = io.open(path, "r+")
         cppFile = dirItr(".",string.sub(str, 1, string.find(str, ".", 1, true) - 1) .. ".cpp")
@@ -28,8 +45,7 @@ loadFile = function (str, path)
     end
 end
 
-dirItr = function (path, targetFileString)
-    print("Input file is "..arg[1])
+function dirItr (path, targetFileString)
     print("Looking for "..targetFileString.."\t-------------------------")
     for file in lfs.dir(path) do
         if file ~= "." and file ~= ".." then
@@ -49,7 +65,9 @@ dirItr = function (path, targetFileString)
     end
 end
 
-insertConstructor = function ()
+function insertConstructor ()
+
+    -- if constructor already exists then return
     local tempStr, tempPos
     hFile:seek("set")
     for line in hFile:lines() do
@@ -64,9 +82,10 @@ insertConstructor = function ()
     hFile:seek("set", tempPos)
     tempStr = "\n\t"..cl.name.."();\n"..tempStr
     hFile:write(tempStr)
-    hFile:flush()
+    hFile:close()
 end
-insertSnippets = function ()
+
+function insertSnippets ()
     mainLoop()
     if cl.bPublic == false then
         io.write ("Insert 'public:'?")
@@ -101,7 +120,7 @@ insertSnippets = function ()
     end
 end
 
-insertBeginPlay = function ()
+function insertBeginPlay()
     print("inserting beginplay")
     local temp, tempPos
     hFile:seek("set")
@@ -122,7 +141,8 @@ insertBeginPlay = function ()
     hFile:close()
 
 end
-mainLoop = function ()
+
+function mainLoop()
     local input
     repeat
         io.write("UE4 Tools > "); io.flush()
@@ -141,7 +161,7 @@ mainLoop = function ()
     until input == "." or input == "exit"
 end
 
-parseFiles = function ()
+function parseFiles()
 
 
 -- iterate through header file
@@ -193,22 +213,6 @@ parseFiles = function ()
 --    insertSnippets()
     mainLoop()
 
-end
-
-entry = function ()
-    local inFileString = arg[1]
-    local targetFileString, targetExt
-
-    lfs.chdir(lfs.currentdir().."/Source")
-
-
-    if arg[2] then
-        loadFile(arg[1], arg[2])
-    else
-        loadFile(arg[1], arg[1])
-    end
-
-    parseFiles()
 end
 
 entry()
