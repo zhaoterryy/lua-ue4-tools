@@ -3,7 +3,7 @@ require "lfs"
 local cppFilePath, hFilePath
 
 -- function declarations
-local dirItr, insertSnippets, mainLoop, parseFiles, entry, loadFile
+local dirItr, insertSnippets, mainLoop, parseFiles, entry, loadFile, writeToFile
 
 -- insert functions
 local insertConstructor, insertBeginPlay, insertTick
@@ -52,6 +52,15 @@ function loadFile (str, path)
     end
 end
 
+function writeToFile (file, str, pos)
+    pos = pos or 0
+    file:seek("set", pos)
+    local tempStr = file:read("*a")
+    tempStr = str..tempStr
+    file:seek("set", pos)
+    file:write(tempStr); file:close()
+end
+
 function dirItr (path, targetFileString)
     print("Looking for "..targetFileString.."\t-------------------------")
     for file in lfs.dir(path) do
@@ -78,10 +87,6 @@ function insertBeginPlay()
     print("inserting beginplay")
     local hTempPos
     local hFile = io.open(hFilePath, "r+")
-    if hSuccess ~= true then
-        errorHandler("Header file failed to load.")
-        return
-    end
 
     for line in hFile:lines() do
         if cl.bPublic and cl.bConstructor then
@@ -101,43 +106,12 @@ function insertBeginPlay()
           return
         end
     end
-    hFile:seek("set", hTempPos)
-    local hTempStr = hFile:read("*a")
-    hTempStr = "\n\tvirtual void BeginPlay() override;\n"..hTempStr
-    hFile:seek("set", hTempPos)
-    hFile:write(hTempStr); hFile:close()
+    writeToFile(hFile, "\n\tvirtual void BeginPlay() override;\n", hTempPos)
 
     -- .cpp
 --    local bIncludeFound, bConstructorFound, cTempPos, cInclPos
     local cppFile = io.open(cppFilePath, "a")
---    local cppFileStr = io.read("*a")
---    for line in cppFile:lines() do
---        if line:find("^#include%s\".-\"$") then
---            cInclPos = cppFile:seek()
---        end
---    end
-
---    local findConstrPos = cppFileStr:find(cl.name.."::"..cl.name.."()\n{.*}")
---    if findConstrPos then
---        cTempPos = findConstrPos
---        bConstructorFound = true
---    end
 -- @todo : insert in proper position
-
---    if bConstructorFound ~= true then
-        -- should we be handling it this way??
---        cppFile:seek("set", cInclPos)
---        local cTempStr = cppFile:read("*a")
---        cTempStr = "\nvoid "..cl.Name.."::".." BeginPlay()\n{\nSuper::BeginPlay();\n}\n"..cTempStr
---        cppFile:seek("set", cInclPos)
---        cppFile:write(cTempStr); cppFile:close()
---    else
---        cppFile:seek("set", cTempPos)
---        local cTempStr = cppFile:read("*a")
---        cTempStr = "\nvoid "..cl.Name.."::".." BeginPlay()\n{\nSuper::BeginPlay();\n}\n"..cTempStr
---        cppFile:seek("set", cTempPos)
---        cppFile:write(cTempStr); cppFile:close()
---    end
 
     cppFile:write("\nvoid "..cl.name.."::".."BeginPlay()\n{\n\tSuper::BeginPlay();\n}\n")
     cppFile:close()
@@ -164,13 +138,9 @@ function insertConstructor()
         end
     end
 
-    hFile:seek("set", hTempPos)
-    local hTempStr = hFile:read("*a")
-    hTempStr = "\n\t"..cl.name.."();\n"..hTempStr
-    hFile:seek("set", hTempPos)
-    hFile:write(hTempStr); hFile:close()
+    writeToFile(hFile, "\n\t"..cl.name.."();\n", hTempPos)
 
-    local bIncludeFound, cTempPos
+    local bIncludeFound, cTempPos, cInsStr
     local cppFile = io.open(cppFilePath, "r+")
     -- .cpp
     for line in cppFile:lines() do
@@ -183,19 +153,14 @@ function insertConstructor()
     if bIncludeFound ~= true then
         -- should we be handling it this way??
         local tempIncl = hFilePath:match("([^\\]-[^%.]+)$")
+        cInsStr = "// auto generated stub from lua-ue4-tools\n#include \""..tempIncl.."\n\n"..cl.name.."::"..cl.name.."()\n{\n\n}\n"
+        cTempPos = 0
         print("error: no includes found.. inserting\n#include \""..tempIncl.."\"")
-        cppFile:seek("set")
-        local cTempStr = cppFile:read("*a")
-        cTempStr = "// auto generated stub from lua-ue4-tools\n#include \""..tempIncl.."\""
-        cppFile:seek("set")
-        cppFile:write(cTempStr); cppFile:close()
     else
-        cppFile:seek("set", cTempPos)
-        local cTempStr = cppFile:read("*a")
-        cTempStr = "\n"..cl.name.."::"..cl.name.."()\n{\n\n}\n"..cTempStr
-        cppFile:seek("set", cTempPos)
-        cppFile:write(cTempStr); cppFile:close()
+        cInsStr = "\n"..cl.name.."::"..cl.name.."()\n{\n\n}\n"
     end
+    writeToFile(cppFile, cInsStr, cTempPos)
+
     -- @todo : confirm write
     cl.bConstructor = true
 end
@@ -230,31 +195,15 @@ function insertTick()
         end
     end
 
-    hFile:seek("set", hTempPos)
-    local hTempStr = hFile:read("*a")
-    hFile:seek("set", hTempPos)
-    hTempStr = "\n\tvirtual void Tick(float DeltaSeconds) override;\n"..hTempStr
-    hFile:write(hTempStr); hFile:close()
+    writeToFile(hFile, "\n\tvirtual void Tick(float DeltaSeconds) override;\n", hTempPos)
 
     -- .cpp
     local cppFile = io.open(cppFilePath, "a")
 -- @todo : insert in proper position
---    local bIncludeFound, bConstructorFound, bBPFound, cInclPos, cConstrPos, cBPPos
---    local cppFile = io.open(cppFilePath, "r+")
---    for line in cppFile:lines() do
---        if line:find("^#include%s\".-\"$") then
---            cInclPos = cppFile:seek()
---            bIncludeFound = true
---        end
---        if line:find(cl.name.."::"..cl.name.."()\n{.*}") then
---            cConstrPos = cppFile:seek()
---            bConstructorFound = true
---        end
---        if line:find("void%s"..cl.name.."::".."BeginPlay()")
---    end
 
     cppFile:write("\nvoid "..cl.name.."::".."Tick(float DeltaSeconds)\n{\n\tSuper::Tick(DeltaSeconds);\n}")
     cppFile:close()
+
     -- @todo : confirm write
     cl.bTick = true
 end
